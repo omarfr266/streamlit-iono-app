@@ -37,6 +37,15 @@ def try_download_ionex_for_day(date_obj, output_folder):
     except Exception as e:
         return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
 
+if downloaded_path:
+    # Vérifie que ce n’est pas une page HTML déguisée
+    with open(downloaded_path, "rb") as f:
+        head = f.read(300)
+        if b"<html" in head.lower():
+            logs.append(f"⚠️ Contenu HTML détecté (erreur masquée) : {os.path.basename(downloaded_path)}")
+            current_date += timedelta(days=1)
+            continue
+
 # ✅ Décompression (supporte .gz et .zip uniquement)
 def decompress_file(file_path):
     try:
