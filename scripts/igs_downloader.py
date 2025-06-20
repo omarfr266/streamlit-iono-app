@@ -3,10 +3,12 @@ import requests
 import shutil
 import gzip
 from datetime import datetime, timedelta
-from requests.auth import HTTPBasicAuth
-from urllib.parse import urlparse
+from netrc import netrc
 
-# ✅ Construction du nom de fichier et URL IONEX
+# 📁 Dossier pour enregistrer les fichiers
+DEFAULT_OUTPUT_DIR = "ionex_files"
+
+# ✅ Génère le nom de fichier et l'URL IONEX
 def build_ionex_filename_and_url(date_obj):
     if isinstance(date_obj, str):
         date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
@@ -20,40 +22,34 @@ def build_ionex_filename_and_url(date_obj):
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
-# ✅ Authentification via Earthdata (.netrc)
-def create_authenticated_session(url):
-    session = requests.Session()
-    auth = requests.utils.get_netrc_auth(url)
-    if auth:
-        session.auth = HTTPBasicAuth(auth[0], auth[2])  # login, password
-    else:
-        raise Exception("Identifiants Earthdata non trouvés dans .netrc")
-    return session
-
-# ✅ Téléchargement avec authentification
-def try_download_ionex_for_day(date_obj, output_folder):
+# ✅ Télécharge un fichier IONEX avec authentification
+def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
     filename, url = build_ionex_filename_and_url(date_obj)
     os.makedirs(output_folder, exist_ok=True)
     output_path = os.path.join(output_folder, filename)
 
+    # 🔐 Auth via .netrc
     try:
-        session = create_authenticated_session(url)
-        response = session.get(url, stream=True, timeout=60)
-
-        if response.status_code == 200:
-            with open(output_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            return f"✅ Téléchargé : {filename}", output_path
-        elif response.status_code == 401:
-            return f"❌ Non autorisé : vérifie ton fichier .netrc", None
-        else:
-            return f"❌ Introuvable (HTTP {response.status_code}) : {filename}", None
-
+        netrc_path = os.path.expanduser("~/.netrc")
+        user, _, password = netrc(netrc_path).authenticators("urs.earthdata.nasa.gov")
     except Exception as e:
-        return f"❌ Erreur lors du téléchargement : {filename} — {e}", None
+        return f"❌ Identifiants Earthdata non trouvés dans .netrc : {e}", None
 
-# ✅ Décompression fichier .gz
+    try:
+        with requests.get(url, auth=(user, password), stream=True, timeout=30) as response:
+            if response.status_code == 200:
+                with open(output_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                return f"✅ Téléchargé : {filename}", output_path
+            elif response.status_code == 401:
+                return f"❌ Erreur 401 : Identifiants incorrects pour {filename}", None
+            else:
+                return f"❌ Introuvable (HTTP {response.status_code}) : {filename}", None
+    except Exception as e:
+        return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
+
+# ✅ Décompresse un fichier .gz
 def decompress_file(file_path):
     try:
         if file_path.endswith(".gz"):
@@ -63,7 +59,7 @@ def decompress_file(file_path):
                     shutil.copyfileobj(f_in, f_out)
 
             if os.path.getsize(output_path) < 100:
-                print(f"⚠️ Fichier décompressé trop petit : {output_path}")
+                print(f"⚠️ Fichier décompressé trop petit : {os.path.basename(output_path)}")
                 return None
 
             os.remove(file_path)
@@ -71,13 +67,12 @@ def decompress_file(file_path):
         else:
             print(f"❌ Format non supporté : {file_path}")
             return None
-
     except Exception as e:
-        print(f"❌ Erreur de décompression : {e}")
+        print(f"❌ Erreur lors de la décompression de {file_path} : {e}")
         return None
 
-# ✅ Téléchargement + décompression entre deux dates
-def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_files"):
+# ✅ Télécharge et décompresse entre 2 dates
+def download_and_uncompress_ionex(start_date, end_date, output_folder=DEFAULT_OUTPUT_DIR):
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
     if isinstance(end_date, str):
@@ -85,20 +80,24 @@ def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_fil
 
     logs = []
     current_date = start_date
-    while current_date <= end_date:
-        message, downloaded_path = try_download_ionex_for_day(current_date, output_folder)
-        logs.append(message)
 
+    while current_date <= end_date:
+        msg, downloaded_path = try_download_ionex_for_day(current_date, output_folder)
+        logs.append(msg)
+
+        # ⚠️ Contenu HTML = erreur déguisée
         if downloaded_path:
             with open(downloaded_path, "rb") as f:
-                if b"<html" in f.read(300).lower():
+                head = f.read(300)
+                if b"<html" in head.lower():
                     logs.append(f"⚠️ HTML détecté dans {os.path.basename(downloaded_path)} — probablement erreur du serveur.")
                     current_date += timedelta(days=1)
                     continue
 
-            decompressed = decompress_file(downloaded_path)
-            if decompressed:
-                logs.append(f"✅ Décompressé : {os.path.basename(decompressed)}")
+            # ✅ Décompression
+            decompressed_path = decompress_file(downloaded_path)
+            if decompressed_path:
+                logs.append(f"✅ Décompressé : {os.path.basename(decompressed_path)}")
             else:
                 logs.append(f"❌ Échec décompression : {os.path.basename(downloaded_path)}")
 
