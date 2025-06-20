@@ -8,14 +8,5 @@ scipy
 plotly
 cartopy
 requests
-openpypl
+openpyxl
 madrigalWeb
-os
-shutil
-gzip
-datetime
-re
-cartopy.crs
-cartopy.feature
-madrigalWeb.madrigalWeb
-matplotlib.pyplot
