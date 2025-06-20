@@ -4,18 +4,14 @@ import shutil
 import gzip
 from datetime import datetime, timedelta
 
-try:
-    import streamlit as st
-    EARTHDATA_USER = st.secrets["earthdata_user"]
-    EARTHDATA_PASS = st.secrets["earthdata_pass"]
-except Exception:
-    # fallback local test
-    EARTHDATA_USER = os.getenv("EARTHDATA_USER")
-    EARTHDATA_PASS = os.getenv("EARTHDATA_PASS")
+# Identifiants Earthdata (hardcodés pour tests, non recommandé pour production)
+EARTHDATA_USER = "omargravimetrie"
+EARTHDATA_PASS = "Gravimetrie-donnees222"
 
-DEFAULT_OUTPUT_DIR = "ionex_files"
+DEFAULT_OUTPUT_DIR = "ionex_data"  # Dossier de sortie harmonisé avec l'interface
 
 def build_ionex_filename_and_url(date_obj):
+    """Construit le nom de fichier et l'URL pour un fichier IONEX."""
     if isinstance(date_obj, str):
         date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
     elif isinstance(date_obj, datetime):
@@ -23,12 +19,13 @@ def build_ionex_filename_and_url(date_obj):
 
     doy = date_obj.timetuple().tm_yday
     year = date_obj.year
-
-    filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
+    # Format standard pour les fichiers IGS IONEX
+    filename = f"igs{year}{doy:03d}0.ionex.gz"
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
 def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
+    """Tente de télécharger un fichier IONEX pour une date donnée."""
     filename, url = build_ionex_filename_and_url(date_obj)
     os.makedirs(output_folder, exist_ok=True)
     output_path = os.path.join(output_folder, filename)
@@ -44,31 +41,43 @@ def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
                         f.write(chunk)
                 return f"✅ Téléchargé : {filename}", output_path
             elif response.status_code == 401:
-                return f"❌ Erreur 401 : Identifiants incorrects pour {filename}", None
+                return f"❌ Erreur 401 : Identifiants Earthdata incorrects pour {filename}", None
+            elif response.status_code == 404:
+                return f"❌ Fichier introuvable (HTTP 404) : {filename}", None
             else:
-                return f"❌ Introuvable (HTTP {response.status_code}) : {filename}", None
-    except Exception as e:
-        return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
+                return f"❌ Erreur HTTP {response.status_code} : {filename}", None
+    except requests.exceptions.RequestException as e:
+        return f"❌ Erreur réseau lors du téléchargement de {filename} : {str(e)}", None
 
 def decompress_file(file_path):
+    """Décompresse un fichier .gz et supprime l'original si valide."""
     try:
         if file_path.endswith(".gz"):
-            output_path = file_path[:-3]
+            output_path = file_path[:-3]  # Enlève .gz
             with gzip.open(file_path, 'rb') as f_in:
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
 
+            # Vérifie que le fichier décompressé n'est pas vide ou corrompu
             if os.path.getsize(output_path) < 100:
+                os.remove(output_path)
                 return None
 
-            os.remove(file_path)
+            # Vérifie si le fichier contient du HTML (signe d'erreur)
+            with open(output_path, "rb") as f:
+                head = f.read(300)
+                if b"<html" in head.lower():
+                    os.remove(output_path)
+                    return None
+
+            os.remove(file_path)  # Supprime le .gz après décompression
             return output_path
-        else:
-            return None
+        return None
     except Exception as e:
         return None
 
 def download_and_uncompress_ionex(start_date, end_date, output_folder=DEFAULT_OUTPUT_DIR):
+    """Télécharge et décompresse les fichiers IONEX pour une plage de dates."""
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
     if isinstance(end_date, str):
@@ -82,13 +91,6 @@ def download_and_uncompress_ionex(start_date, end_date, output_folder=DEFAULT_OU
         logs.append(msg)
 
         if downloaded_path:
-            with open(downloaded_path, "rb") as f:
-                head = f.read(300)
-                if b"<html" in head.lower():
-                    logs.append(f"⚠️ HTML détecté dans {os.path.basename(downloaded_path)} — erreur probable.")
-                    current_date += timedelta(days=1)
-                    continue
-
             decompressed_path = decompress_file(downloaded_path)
             if decompressed_path:
                 logs.append(f"✅ Décompressé : {os.path.basename(decompressed_path)}")
