@@ -8,7 +8,7 @@ scipy
 plotly
 cartopy
 requests
-openpyxl
+openpypl
 madrigalWeb
 os
 shutil
