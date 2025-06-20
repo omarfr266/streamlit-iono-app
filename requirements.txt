@@ -1,10 +1,11 @@
 streamlit
 numpy
 matplotlib
-h5py
-netCDF4
 pandas
+netCDF4
+h5py
 scipy
 plotly
 cartopy
-madrigalWeb
+requests
+openpyxl
