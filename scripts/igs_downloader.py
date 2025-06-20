@@ -16,12 +16,10 @@ def build_ionex_filename_and_url(date_obj):
     year = date_obj.year
     year_short = year % 100
 
-    if year < 2024:
-        filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
-        
-    else:
-        filename = f"igsg{doy:03d}0.{year_short:02d}i.Z"
 
+    
+        
+    filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
