@@ -3,9 +3,9 @@ import requests
 import shutil
 import gzip
 from datetime import datetime, timedelta, date
-import subprocess
 import zipfile
 
+# ✅ Construction du nom de fichier et URL IONEX
 def build_ionex_filename_and_url(date_obj):
     if isinstance(date_obj, str):
         date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
@@ -14,15 +14,12 @@ def build_ionex_filename_and_url(date_obj):
 
     doy = date_obj.timetuple().tm_yday
     year = date_obj.year
-    year_short = year % 100
 
-
-    
-        
     filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
+# ✅ Téléchargement du fichier IONEX
 def try_download_ionex_for_day(date_obj, output_folder):
     filename, url = build_ionex_filename_and_url(date_obj)
     os.makedirs(output_folder, exist_ok=True)
@@ -36,32 +33,18 @@ def try_download_ionex_for_day(date_obj, output_folder):
                     f.write(chunk)
             return f"✅ Téléchargé : {filename}", output_path
         else:
-            return f"❌ Introuvable : {filename}", None
+            return f"❌ Introuvable (HTTP {response.status_code}) : {filename}", None
     except Exception as e:
         return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
 
+# ✅ Décompression (supporte .gz et .zip uniquement)
 def decompress_file(file_path):
-    path_to_7z = r"C:\Program Files\7-Zip\7z.exe"
-
     if not os.path.isfile(file_path):
         return None
 
     try:
-        if file_path.endswith(".Z"):
-            output_dir = os.path.dirname(file_path)
-            result = subprocess.run([path_to_7z, "e", f"-o{output_dir}", "-y", file_path], capture_output=True, text=True)
-
-
-            if result.returncode == 0:
-                decompressed_path = os.path.join(output_dir, os.path.basename(file_path)[:-2])
-                os.remove(file_path)
-                return decompressed_path
-            else:
-                print(f"❌ Erreur 7z : {result.stderr}")
-                return None
-
-        elif file_path.endswith(".gz"):
-            output_path = file_path[:-3]
+        if file_path.endswith(".gz"):
+            output_path = file_path[:-3]  # remove .gz
             with gzip.open(file_path, 'rb') as f_in:
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
@@ -74,13 +57,19 @@ def decompress_file(file_path):
             os.remove(file_path)
             return os.path.dirname(file_path)
 
+        elif file_path.endswith(".Z"):
+            print(f"⚠️ Décompression .Z non supportée sur Streamlit Cloud : {file_path}")
+            return None
+
         else:
+            print(f"❌ Format non reconnu : {file_path}")
             return None
 
     except Exception as e:
         print(f"❌ Erreur décompression {file_path} : {e}")
         return None
 
+# ✅ Fonction complète : téléchargement + décompression entre 2 dates
 def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_files"):
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
