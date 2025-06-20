@@ -39,34 +39,27 @@ def try_download_ionex_for_day(date_obj, output_folder):
 
 # ✅ Décompression (supporte .gz et .zip uniquement)
 def decompress_file(file_path):
-    if not os.path.isfile(file_path):
-        return None
-
     try:
         if file_path.endswith(".gz"):
-            output_path = file_path[:-3]  # remove .gz
+            output_path = file_path[:-3]
             with gzip.open(file_path, 'rb') as f_in:
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
+
+            # ✅ Vérifie si le fichier a du contenu
+            if os.path.getsize(output_path) < 100:
+                print("⚠️ Fichier décompressé trop petit : peut-être corrompu")
+                return None
+
             os.remove(file_path)
             return output_path
 
-        elif file_path.endswith(".zip"):
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                zip_ref.extractall(os.path.dirname(file_path))
-            os.remove(file_path)
-            return os.path.dirname(file_path)
-
-        elif file_path.endswith(".Z"):
-            print(f"⚠️ Décompression .Z non supportée sur Streamlit Cloud : {file_path}")
-            return None
-
         else:
-            print(f"❌ Format non reconnu : {file_path}")
+            print(f"❌ Format non supporté : {file_path}")
             return None
 
     except Exception as e:
-        print(f"❌ Erreur décompression {file_path} : {e}")
+        print(f"❌ Exception lors de la décompression de {file_path} : {e}")
         return None
 
 # ✅ Fonction complète : téléchargement + décompression entre 2 dates
