@@ -2,8 +2,7 @@ import os
 import requests
 import shutil
 import gzip
-from datetime import datetime, timedelta, date
-import zipfile
+from datetime import datetime, timedelta
 
 # ✅ Construction du nom de fichier et URL IONEX
 def build_ionex_filename_and_url(date_obj):
@@ -37,16 +36,7 @@ def try_download_ionex_for_day(date_obj, output_folder):
     except Exception as e:
         return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
 
-if downloaded_path:
-    # Vérifie que ce n’est pas une page HTML déguisée
-    with open(downloaded_path, "rb") as f:
-        head = f.read(300)
-        if b"<html" in head.lower():
-            logs.append(f"⚠️ Contenu HTML détecté (erreur masquée) : {os.path.basename(downloaded_path)}")
-            current_date += timedelta(days=1)
-            continue
-
-# ✅ Décompression (supporte .gz et .zip uniquement)
+# ✅ Décompression (supporte .gz uniquement)
 def decompress_file(file_path):
     try:
         if file_path.endswith(".gz"):
@@ -62,7 +52,6 @@ def decompress_file(file_path):
 
             os.remove(file_path)
             return output_path
-
         else:
             print(f"❌ Format non supporté : {file_path}")
             return None
