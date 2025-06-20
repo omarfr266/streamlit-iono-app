@@ -4,7 +4,6 @@ import shutil
 import gzip
 from datetime import datetime, timedelta
 
-# ✅ Construction du nom de fichier et URL IONEX
 def build_ionex_filename_and_url(date_obj):
     if isinstance(date_obj, str):
         date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
@@ -13,12 +12,10 @@ def build_ionex_filename_and_url(date_obj):
 
     doy = date_obj.timetuple().tm_yday
     year = date_obj.year
-
     filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
-# ✅ Téléchargement du fichier IONEX
 def try_download_ionex_for_day(date_obj, output_folder):
     filename, url = build_ionex_filename_and_url(date_obj)
     os.makedirs(output_folder, exist_ok=True)
@@ -34,33 +31,35 @@ def try_download_ionex_for_day(date_obj, output_folder):
         else:
             return f"❌ Introuvable (HTTP {response.status_code}) : {filename}", None
     except Exception as e:
-        return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
+        return f"❌ Erreur téléchargement : {filename}\n{e}", None
 
-# ✅ Décompression (supporte .gz uniquement)
 def decompress_file(file_path):
     try:
         if file_path.endswith(".gz"):
             output_path = file_path[:-3]
+
+            # Vérifie que ce n’est pas une page HTML déguisée
+            with open(file_path, "rb") as f:
+                head = f.read(300)
+                if b"<html" in head.lower():
+                    return None
+
+            # Décompression GZIP
             with gzip.open(file_path, 'rb') as f_in:
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
 
-            # ✅ Vérifie si le fichier a du contenu
             if os.path.getsize(output_path) < 100:
-                print("⚠️ Fichier décompressé trop petit : peut-être corrompu")
                 return None
 
             os.remove(file_path)
             return output_path
         else:
-            print(f"❌ Format non supporté : {file_path}")
             return None
-
     except Exception as e:
         print(f"❌ Exception lors de la décompression de {file_path} : {e}")
         return None
 
-# ✅ Fonction complète : téléchargement + décompression entre 2 dates
 def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_files"):
     if isinstance(start_date, str):
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
@@ -69,11 +68,22 @@ def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_fil
 
     logs = []
     current_date = start_date
+
     while current_date <= end_date:
         message, downloaded_path = try_download_ionex_for_day(current_date, output_folder)
         logs.append(message)
 
         if downloaded_path:
+            # Vérifie si c'est un fichier HTML déguisé
+            with open(downloaded_path, "rb") as f:
+                head = f.read(300)
+                if b"<html" in head.lower():
+                    logs.append(f"⚠️ HTML détecté dans {os.path.basename(downloaded_path)} — probablement erreur du serveur.")
+                    os.remove(downloaded_path)
+                    current_date += timedelta(days=1)
+                    continue
+
+            # Décompression
             decompressed_path = decompress_file(downloaded_path)
             if decompressed_path:
                 logs.append(f"✅ Décompressé : {os.path.basename(decompressed_path)}")
