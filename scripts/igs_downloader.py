@@ -5,7 +5,7 @@ import gzip
 import zipfile
 from datetime import datetime, timedelta, date
 
-# Identifiants Earthdata (hardcodés pour tests, utiliser st.secrets en production)
+# Identifiants Earthdata (utiliser st.secrets en production)
 try:
     import streamlit as st
     EARTHDATA_USER = st.secrets["earthdata"]["username"]
@@ -15,7 +15,7 @@ except Exception:
     EARTHDATA_USER = "omargravimetrie"
     EARTHDATA_PASS = "Gravimetrie-donnees222"
 
-DEFAULT_OUTPUT_DIR = "ionex_data"  # Harmonisé avec l'interface
+DEFAULT_OUTPUT_DIR = "ionex_data"
 
 def build_ionex_filename_and_url(date_obj):
     """Construit le nom de fichier et l'URL pour un fichier IONEX."""
@@ -26,7 +26,6 @@ def build_ionex_filename_and_url(date_obj):
 
     doy = date_obj.timetuple().tm_yday
     year = date_obj.year
-    # Format CODE pour les fichiers IONEX
     filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
     url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
@@ -43,7 +42,12 @@ def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
     try:
         with requests.get(url, auth=(EARTHDATA_USER, EARTHDATA_PASS), stream=True, timeout=30) as response:
             if response.status_code == 200:
+                # Vérifie si le contenu est HTML (erreur potentielle)
+                first_bytes = next(response.iter_content(300), b"")
+                if b"<html" in first_bytes.lower():
+                    return f"❌ Téléchargement invalide (HTML détecté) : {filename}", None
                 with open(output_path, "wb") as f:
+                    f.write(first_bytes)
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 return f"✅ Téléchargé : {filename}", output_path
@@ -60,24 +64,24 @@ def decompress_file(file_path):
     """Décompresse un fichier .gz ou .zip et supprime l'original si valide."""
     try:
         if file_path.endswith(".gz"):
-            output_path = file_path[:-3]  # Enlève .gz
+            output_path = file_path[:-3]
             with gzip.open(file_path, 'rb') as f_in:
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
 
-            # Vérifie que le fichier décompressé n'est pas vide ou corrompu
+            # Vérifie que le fichier décompressé est valide
             if os.path.getsize(output_path) < 100:
                 os.remove(output_path)
                 return None
 
-            # Vérifie si le fichier contient du HTML (signe d'erreur)
+            # Vérifie si le fichier contient du HTML
             with open(output_path, "rb") as f:
                 head = f.read(300)
                 if b"<html" in head.lower():
                     os.remove(output_path)
                     return None
 
-            os.remove(file_path)  # Supprime le .gz après décompression
+            os.remove(file_path)
             return output_path
 
         elif file_path.endswith(".zip"):
@@ -85,7 +89,6 @@ def decompress_file(file_path):
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 zip_ref.extractall(output_dir)
             os.remove(file_path)
-            # Retourne le premier fichier extrait (à adapter si plusieurs fichiers)
             extracted_files = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if os.path.isfile(os.path.join(output_dir, f))]
             return extracted_files[0] if extracted_files else None
 
@@ -93,7 +96,11 @@ def decompress_file(file_path):
             return None
 
     except Exception as e:
-        print(f"❌ Erreur décompression {file_path} : {e}")
+        # Journalisation améliorée pour Streamlit
+        try:
+            st.error(f"❌ Erreur décompression {file_path} : {str(e)}")
+        except NameError:
+            print(f"❌ Erreur décompression {file_path} : {str(e)}")
         return None
 
 def download_and_uncompress_ionex(start_date, end_date, output_folder=DEFAULT_OUTPUT_DIR):
