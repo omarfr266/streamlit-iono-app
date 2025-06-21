@@ -4,6 +4,7 @@ import shutil
 import gzip
 from datetime import datetime, timedelta
 import zipfile
+import streamlit as st  # Nécessaire pour accéder aux secrets
 
 def build_ionex_filename_and_url(date_obj):
     if isinstance(date_obj, str):
@@ -13,8 +14,9 @@ def build_ionex_filename_and_url(date_obj):
 
     doy = date_obj.timetuple().tm_yday
     year = date_obj.year
+
     filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
-    url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
+    url = f"https://urs.earthdata.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
 def try_download_ionex_for_day(date_obj, output_folder):
@@ -22,29 +24,20 @@ def try_download_ionex_for_day(date_obj, output_folder):
     os.makedirs(output_folder, exist_ok=True)
     output_path = os.path.join(output_folder, filename)
 
-    # Authentification via variables d’environnement
-    username = os.getenv("omargravimetrie")
-    password = os.getenv("Gravimetrie-donnees222")
-
-    if not username or not password:
-        return f"❌ Identifiants Earthdata manquants (EARTHDATA_USERNAME / EARTHDATA_PASSWORD)", None
+    username = st.secrets["earthdata"]["username"]
+    password = st.secrets["earthdata"]["password"]
 
     try:
-        with requests.Session() as session:
-            session.auth = (username, password)
-            session.headers.update({"User-Agent": "streamlit-app"})
-            response = session.get(url, stream=True, timeout=30, allow_redirects=True)
-
-            if response.status_code == 200 and not response.text.startswith("<!DOCTYPE html>"):
-                with open(output_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return f"✅ Téléchargé : {filename}", output_path
-            else:
-                return f"❌ Téléchargement invalide : {filename} | Code: {response.status_code}", None
-
+        response = requests.get(url, stream=True, timeout=30, auth=(username, password))
+        if response.status_code == 200 and "html" not in response.headers.get("Content-Type", "").lower():
+            with open(output_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return f"✅ Téléchargé : {filename}", output_path
+        else:
+            return f"❌ Erreur (status {response.status_code}) ou contenu invalide pour : {filename}", None
     except Exception as e:
-        return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
+        return f"❌ Erreur de téléchargement {filename} : {e}", None
 
 def decompress_file(file_path):
     if not os.path.isfile(file_path):
@@ -58,13 +51,16 @@ def decompress_file(file_path):
                     shutil.copyfileobj(f_in, f_out)
             os.remove(file_path)
             return output_path
+
         elif file_path.endswith(".zip"):
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 zip_ref.extractall(os.path.dirname(file_path))
             os.remove(file_path)
             return os.path.dirname(file_path)
+
         else:
             return None
+
     except Exception as e:
         print(f"❌ Erreur décompression {file_path} : {e}")
         return None
