@@ -5,13 +5,12 @@ import gzip
 import zipfile
 from datetime import datetime, timedelta, date
 
-# Identifiants Earthdata (utiliser st.secrets en production)
+# Identifiants Earthdata
 try:
     import streamlit as st
     EARTHDATA_USER = st.secrets["earthdata"]["username"]
     EARTHDATA_PASS = st.secrets["earthdata"]["password"]
 except Exception:
-    # Fallback pour tests locaux
     EARTHDATA_USER = "omargravimetrie"
     EARTHDATA_PASS = "Gravimetrie-donnees222"
 
@@ -42,9 +41,13 @@ def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
     try:
         with requests.get(url, auth=(EARTHDATA_USER, EARTHDATA_PASS), stream=True, timeout=30) as response:
             if response.status_code == 200:
-                # Vérifie si le contenu est HTML (erreur potentielle)
+                # Vérifie si le contenu est HTML
                 first_bytes = next(response.iter_content(300), b"")
                 if b"<html" in first_bytes.lower():
+                    try:
+                        st.error(f"❌ Téléchargement invalide (HTML détecté) : {filename}. Code HTTP: {response.status_code}. Contenu: {first_bytes.decode('utf-8', errors='ignore')[:100]}")
+                    except NameError:
+                        print(f"❌ Téléchargement invalide (HTML détecté) : {filename}. Code HTTP: {response.status_code}. Contenu: {first_bytes.decode('utf-8', errors='ignore')[:100]}")
                     return f"❌ Téléchargement invalide (HTML détecté) : {filename}", None
                 with open(output_path, "wb") as f:
                     f.write(first_bytes)
@@ -69,12 +72,10 @@ def decompress_file(file_path):
                 with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
 
-            # Vérifie que le fichier décompressé est valide
             if os.path.getsize(output_path) < 100:
                 os.remove(output_path)
                 return None
 
-            # Vérifie si le fichier contient du HTML
             with open(output_path, "rb") as f:
                 head = f.read(300)
                 if b"<html" in head.lower():
@@ -96,7 +97,6 @@ def decompress_file(file_path):
             return None
 
     except Exception as e:
-        # Journalisation améliorée pour Streamlit
         try:
             st.error(f"❌ Erreur décompression {file_path} : {str(e)}")
         except NameError:
