@@ -9,7 +9,11 @@ from scripts.madrigal_downloader import telecharger_donnees_tec
 from scripts.madrigal_carte import lire_tec_ascii
 from scripts.setup_netrc import setup_netrc
 setup_netrc()  # Configure automatiquement .netrc
-
+# Ajouter juste au début de ton script Streamlit (par exemple dans main)
+setup_netrc(
+    username=st.secrets["earthdata"]["username"],
+    password=st.secrets["earthdata"]["password"]
+)
 
 
 
