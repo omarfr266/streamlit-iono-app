@@ -1,0 +1,24 @@
+import os
+
+def setup_netrc():
+    """
+    Configure le fichier ~/.netrc pour authentifier les requêtes vers cddis.nasa.gov.
+    Les identifiants sont lus depuis .streamlit/secrets.toml.
+    """
+    import streamlit as st
+
+    username = st.secrets["earthdata"]["username"]
+    password = st.secrets["earthdata"]["password"]
+
+    netrc_path = os.path.expanduser("~/.netrc")
+
+    netrc_content = f"""
+machine urs.earthdata.nasa.gov
+login {username}
+password {password}
+"""
+
+    with open(netrc_path, "w") as f:
+        f.write(netrc_content.strip() + "\n")
+
+    os.chmod(netrc_path, 0o600)
