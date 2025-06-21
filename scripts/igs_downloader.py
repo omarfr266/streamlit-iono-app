@@ -4,7 +4,8 @@ import gzip
 import shutil
 import streamlit as st
 
-def download_and_decompress_cddis(base_url, filenames, save_dir):
+def download_and_uncompress_ionex(base_url, filenames, save_dir):
+
     headers = {
         'User-Agent': 'Mozilla/5.0'
     }
