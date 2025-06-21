@@ -1,45 +1,91 @@
 import os
 import requests
-import gzip
 import shutil
-import streamlit as st
+import gzip
+from datetime import datetime, timedelta, date
+import subprocess
+import zipfile
 
-def download_and_uncompress_ionex(base_url, filenames, save_dir):
+def build_ionex_filename_and_url(date_obj):
+    if isinstance(date_obj, str):
+        date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
+    elif isinstance(date_obj, datetime):
+        date_obj = date_obj.date()
 
-    headers = {
-        'User-Agent': 'Mozilla/5.0'
-    }
+    doy = date_obj.timetuple().tm_yday
+    year = date_obj.year
+    year_short = year % 100
 
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
 
-    for filename in filenames:
-        url = base_url + filename
-        gz_path = os.path.join(save_dir, filename)
-        decompressed_path = gz_path.replace(".gz", "")
+    
+        
+    filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
+    url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
+    return filename, url
 
-        try:
-            st.info(f"⬇️ Téléchargement : {filename}")
-            response = requests.get(url, headers=headers, timeout=20)
+def try_download_ionex_for_day(date_obj, output_folder):
+    filename, url = build_ionex_filename_and_url(date_obj)
+    os.makedirs(output_folder, exist_ok=True)
+    output_path = os.path.join(output_folder, filename)
 
-            if response.status_code != 200:
-                st.error(f"❌ HTTP {response.status_code} : {filename}")
-                continue
+    try:
+        response = requests.get(url, stream=True, timeout=30)
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return f"✅ Téléchargé : {filename}", output_path
+        else:
+            return f"❌ Introuvable : {filename}", None
+    except Exception as e:
+        return f"❌ Erreur lors du téléchargement : {filename}\n{e}", None
 
-            if b'<!DOCTYPE html>' in response.content[:200]:
-                st.error(f"❌ Contenu HTML détecté : {filename}")
-                continue
+def decompress_file(file_path):
+    if not os.path.isfile(file_path):
+        return None
 
-            # Enregistrer le .gz
-            with open(gz_path, 'wb') as f:
-                f.write(response.content)
-            st.success(f"✅ Téléchargé : {filename}")
-
-            # Décompresser
-            with gzip.open(gz_path, 'rb') as f_in:
-                with open(decompressed_path, 'wb') as f_out:
+    try:
+        if file_path.endswith(".gz"):
+            output_path = file_path[:-3]
+            with gzip.open(file_path, 'rb') as f_in:
+                with open(output_path, 'wb') as f_out:
                     shutil.copyfileobj(f_in, f_out)
-            st.success(f"📂 Décompressé : {os.path.basename(decompressed_path)}")
+            os.remove(file_path)
+            return output_path
 
-        except Exception as e:
-            st.error(f"⚠️ Erreur : {e}")
+        elif file_path.endswith(".zip"):
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                zip_ref.extractall(os.path.dirname(file_path))
+            os.remove(file_path)
+            return os.path.dirname(file_path)
+
+        else:
+            return None
+
+    except Exception as e:
+        print(f"❌ Erreur décompression {file_path} : {e}")
+        return None
+
+
+def download_and_uncompress_ionex(start_date, end_date, output_folder="ionex_files"):
+    if isinstance(start_date, str):
+        start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    if isinstance(end_date, str):
+        end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    logs = []
+    current_date = start_date
+    while current_date <= end_date:
+        message, downloaded_path = try_download_ionex_for_day(current_date, output_folder)
+        logs.append(message)
+
+        if downloaded_path:
+            decompressed_path = decompress_file(downloaded_path)
+            if decompressed_path:
+                logs.append(f"✅ Décompressé : {os.path.basename(decompressed_path)}")
+            else:
+                logs.append(f"❌ Échec décompression : {os.path.basename(downloaded_path)}")
+
+        current_date += timedelta(days=1)
+
+    return logs
