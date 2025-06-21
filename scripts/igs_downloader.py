@@ -6,17 +6,13 @@ from datetime import datetime, timedelta
 import zipfile
 import streamlit as st  # Nécessaire pour accéder aux secrets
 
-def build_ionex_filename_and_url(date_obj):
-    if isinstance(date_obj, str):
-        date_obj = datetime.strptime(date_obj, "%Y-%m-%d").date()
-    elif isinstance(date_obj, datetime):
-        date_obj = date_obj.date()
-
+def build_cddis_filename_and_url(date_obj):
     doy = date_obj.timetuple().tm_yday
+    yy = str(date_obj.year)[2:]
     year = date_obj.year
 
-    filename = f"COD0OPSFIN_{year}{doy:03d}0000_01D_01H_GIM.INX.gz"
-    url = f"https://urs.earthdata.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
+    filename = f"CODG{doy:03d}0.{yy}i.Z"
+    url = f"https://cddis.nasa.gov/archive/gnss/products/ionex/{year}/{doy:03d}/{filename}"
     return filename, url
 
 def try_download_ionex_for_day(date_obj, output_folder):
