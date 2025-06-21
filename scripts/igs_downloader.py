@@ -23,8 +23,8 @@ def try_download_ionex_for_day(date_obj, output_folder):
     output_path = os.path.join(output_folder, filename)
 
     # Authentification via variables d’environnement
-    username = os.getenv("EARTHDATA_USERNAME")
-    password = os.getenv("EARTHDATA_PASSWORD")
+    username = os.getenv("omargravimetrie")
+    password = os.getenv("Gravimetrie-donnees222")
 
     if not username or not password:
         return f"❌ Identifiants Earthdata manquants (EARTHDATA_USERNAME / EARTHDATA_PASSWORD)", None
