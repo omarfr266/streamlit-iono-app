@@ -7,6 +7,8 @@ from scripts.generation_excel import generer_excel_TEC_par_heure
 from scripts.plot_ionex_map import afficher_carte_TEC_fichier
 from scripts.madrigal_downloader import telecharger_donnees_tec
 from scripts.madrigal_carte import lire_tec_ascii
+from scripts.setup_netrc import setup_netrc
+setup_netrc()  # Configure automatiquement .netrc
 
 
 
