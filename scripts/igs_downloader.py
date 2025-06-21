@@ -5,14 +5,9 @@ import gzip
 import zipfile
 from datetime import datetime, timedelta, date
 
-# Identifiants Earthdata
-try:
-    import streamlit as st
-    EARTHDATA_USER = st.secrets["earthdata"]["username"]
-    EARTHDATA_PASS = st.secrets["earthdata"]["password"]
-except Exception:
-    EARTHDATA_USER = "omargravimetrie"
-    EARTHDATA_PASS = "Gravimetrie-donnees222"
+# Identifiants Earthdata hardcodés
+EARTHDATA_USER = "omargravimetrie"
+EARTHDATA_PASS = "Gravimetrie-donnees222"
 
 DEFAULT_OUTPUT_DIR = "ionex_data"
 
@@ -36,17 +31,21 @@ def try_download_ionex_for_day(date_obj, output_folder=DEFAULT_OUTPUT_DIR):
     output_path = os.path.join(output_folder, filename)
 
     if not EARTHDATA_USER or not EARTHDATA_PASS:
-        return "❌ Identifiants Earthdata non fournis. Veuillez configurer les secrets dans Streamlit Cloud.", None
+        return "❌ Identifiants Earthdata non fournis.", None
 
     try:
-        with requests.get(url, auth=(EARTHDATA_USER, EARTHDATA_PASS), stream=True, timeout=30) as response:
+        # Utiliser une session pour gérer les cookies et redirections
+        session = requests.Session()
+        session.auth = (EARTHDATA_USER, EARTHDATA_PASS)
+        with session.get(url, stream=True, timeout=30) as response:
             if response.status_code == 200:
                 # Vérifie si le contenu est HTML
                 first_bytes = next(response.iter_content(300), b"")
                 if b"<html" in first_bytes.lower():
                     try:
+                        import streamlit as st
                         st.error(f"❌ Téléchargement invalide (HTML détecté) : {filename}. Code HTTP: {response.status_code}. Contenu: {first_bytes.decode('utf-8', errors='ignore')[:100]}")
-                    except NameError:
+                    except ImportError:
                         print(f"❌ Téléchargement invalide (HTML détecté) : {filename}. Code HTTP: {response.status_code}. Contenu: {first_bytes.decode('utf-8', errors='ignore')[:100]}")
                     return f"❌ Téléchargement invalide (HTML détecté) : {filename}", None
                 with open(output_path, "wb") as f:
@@ -98,8 +97,9 @@ def decompress_file(file_path):
 
     except Exception as e:
         try:
+            import streamlit as st
             st.error(f"❌ Erreur décompression {file_path} : {str(e)}")
-        except NameError:
+        except ImportError:
             print(f"❌ Erreur décompression {file_path} : {str(e)}")
         return None
 
